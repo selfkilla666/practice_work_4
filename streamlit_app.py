@@ -12,6 +12,7 @@ st.set_page_config(page_title='Практична робота №4', page_icon=
 
 stock_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "UNH"]
 
+@st.cache_data
 def load_stock_data(tickers: list, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
     data = yf.download(tickers, start=start_date, end=end_date)
     
