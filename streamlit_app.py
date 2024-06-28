@@ -1,151 +1,74 @@
-import streamlit as st
+import datetime
+
+import numpy as np
 import pandas as pd
-import math
-from pathlib import Path
+import streamlit as st
+import plotly.express as px
+import yfinance as yf
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# Налаштування назви сторінки
+st.set_page_config(page_title='Практична робота №4', page_icon=':mortar_board:')
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+stock_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "UNH"]
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+def load_stock_data(tickers: list, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
+    data = yf.download(tickers, start=start_date, end=end_date)
+    
+    if len(tickers) > 1:
+        data = data["Adj Close"]
+    
+    return data
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
+# Відображення опису і заголовку
 '''
-# :earth_americas: GDP dashboard
+# :ticket: Перегляд ціни акцій
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+Цей застосунок розроблен в рамках індивідуальної роботи по університетській практиці.
+Усі дані щодо ціни акцій збираються Python бібліотекою [`yfinance`](https://pypi.org/project/yfinance/), 
+яка працює як обгортка до Yahoo Finance.
+Початковий код застосунку можна переглянути у [GitHub репозиторії](https://github.com/selfkilla666/practice_work_4).
+
 '''
 
-# Add some spacing
-''
-''
+st.divider()
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+# Налаштування дати
+today_date = datetime.date.today()
+month_ago_date = today_date - datetime.timedelta(days=28)
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+start_col, end_col = st.columns(2)
 
-countries = gdp_df['Country Code'].unique()
+start_date = start_col.date_input("Початок періоду", month_ago_date)
+end_date = end_col.date_input("Кінець періоду", today_date)
 
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+# Налаштування тікетів акцій
+selected_tickers = st.multiselect(
+    "Оберіть акції які Вам потрібні",
+    stock_tickers,
+    ["AAPL", "MSFT", "GOOGL"],
+    placeholder="Потрібно обрати хоча б одну акцію"
 )
 
-''
-''
+# Заголовок для графіків
+st.header("Ціна акцій за обраний час", divider="green")
 
+# Перевірка коректності даних
+if len(selected_tickers) == 0:
+    st.error("Помилка: потрібно обрати хоча б одну акцію")
+else:
+    # Отримання даних
+    data = load_stock_data(selected_tickers, start_date, end_date)
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+    if data.empty:
+        st.warning("Помилка: немає даних про обрані акції та обраний період")
+    else:
+        # Підготовка даних для відображення
+        data = data.reset_index().melt(id_vars="Date", var_name="Акція", value_name="Ціна закриття")
 
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+        # Побудова графіку
+        chart_figure = px.line(data, x="Date", y="Ціна закриття", color="Акція")
+        
+        # Відображення
+        st.plotly_chart(chart_figure)
